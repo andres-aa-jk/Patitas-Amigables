@@ -1,0 +1,21 @@
+﻿# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+env/
+media/uploads/
+# Node / frontend
+node_modules/
+dist/
+build/
+coverage/
+.vite/
+.DS_Store
+# IDE
+.idea/
+.vscode/
+
+# Fotos de entrega (datos personales, no públicas)
+media_privado/
