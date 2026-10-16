@@ -29,3 +29,15 @@ def distancia(h1, h2):
     if not h1 or not h2:
         return 64
     return bin(int(h1, 16) ^ int(h2, 16)).count("1")
+
+
+def a_entero(h):
+    """Huella hexadecimal -> entero (None si falta). Se convierte una sola vez por huella."""
+    return int(h, 16) if h else None
+
+
+def distancia_enteros(a, b):
+    """Distancia de Hamming entre dos huellas ya convertidas a entero (64 si falta alguna)."""
+    if a is None or b is None:
+        return 64
+    return (a ^ b).bit_count()

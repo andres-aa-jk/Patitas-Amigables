@@ -11,7 +11,7 @@ from rest_framework.response import Response
 
 from users.permissions import IsAdminRol
 
-from .imagenes import UMBRAL_DUPLICADO, distancia
+from .imagenes import UMBRAL_DUPLICADO, a_entero, distancia_enteros
 from .models import Animal, EntregaAnimal, SolicitudAdopcion, VistaAnimal
 from .serializers import (
     AnimalAdminSerializer,
@@ -59,20 +59,30 @@ def animales_visibles(user):
 
 
 def duplicados_de(animales):
-    """{id_animal: [{id, nombre, distancia}]} comparando huellas de imagen (dHash)."""
-    con_hash = [a for a in Animal.objects.all() if a.foto_hash]
+    """{id_animal: [{id, nombre, distancia}]} comparando huellas de imagen (dHash).
+
+    Solo se leen de la base de datos los animales con huella y únicamente los campos
+    necesarios; cada huella se convierte a entero una sola vez.
+    """
+    con_hash = [
+        (pk, nombre, estado, a_entero(h))
+        for pk, nombre, estado, h in Animal.objects.exclude(foto_hash="").values_list(
+            "pk", "nombre", "estado_publicacion", "foto_hash"
+        )
+    ]
     resultado = {}
     for a in animales:
         if not a.foto_hash:
             continue
+        ha = a_entero(a.foto_hash)
         similares = []
-        for o in con_hash:
-            if o.pk == a.pk:
+        for pk, nombre, estado, ho in con_hash:
+            if pk == a.pk:
                 continue
-            d = distancia(a.foto_hash, o.foto_hash)
+            d = distancia_enteros(ha, ho)
             if d <= UMBRAL_DUPLICADO:
-                similares.append({"id": str(o.pk), "nombre": o.nombre or "Sin nombre",
-                                  "distancia": d, "estado_publicacion": o.estado_publicacion})
+                similares.append({"id": str(pk), "nombre": nombre or "Sin nombre",
+                                  "distancia": d, "estado_publicacion": estado})
         if similares:
             resultado[str(a.pk)] = sorted(similares, key=lambda x: x["distancia"])
     return resultado
@@ -115,12 +125,23 @@ class AnimalViewSet(viewsets.ModelViewSet):
                 {"detail": "Debes enviar los parámetros lat y lng."}, status=400
             )
 
-        radio = float(request.query_params.get("radio", 1000))
-        cercanos = [
-            a
-            for a in self.get_queryset()
-            if distancia_metros(lat, lng, a.latitud, a.longitud) <= radio
-        ]
+        try:
+            radio = float(request.query_params.get("radio", 1000))
+        except (TypeError, ValueError):
+            return Response({"detail": "El radio debe ser un número."}, status=400)
+
+        # Filtro previo en la base de datos (caja alrededor del punto): así Haversine
+        # solo se calcula para los animales realmente cercanos y no para todos.
+        qs = self.get_queryset()
+        grados_lat = radio / 111_320.0
+        qs = qs.filter(latitud__gte=lat - grados_lat, latitud__lte=lat + grados_lat)
+        coseno = math.cos(math.radians(lat))
+        if abs(lat) < 89 and coseno > 0.01:
+            grados_lng = radio / (111_320.0 * coseno)
+            if lng - grados_lng >= -180 and lng + grados_lng <= 180:  # sin cruzar el antimeridiano
+                qs = qs.filter(longitud__gte=lng - grados_lng, longitud__lte=lng + grados_lng)
+
+        cercanos = [a for a in qs if distancia_metros(lat, lng, a.latitud, a.longitud) <= radio]
         serializer = self.get_serializer(cercanos, many=True)
         return Response(serializer.data)
 
@@ -180,6 +201,18 @@ class SolicitudViewSet(mixins.CreateModelMixin, mixins.ListModelMixin,
         if estado:
             qs = qs.filter(estado=estado)
         return qs
+
+    def list(self, request, *args, **kwargs):
+        solicitudes = list(self.filter_queryset(self.get_queryset()))
+        # Una sola consulta para las entregas, en vez de una por cada solicitud.
+        entregas = {}
+        if solicitudes:
+            for e in EntregaAnimal.objects.exclude(estado=EntregaAnimal.RECHAZADA).filter(
+                solicitud__in=[s.pk for s in solicitudes]
+            ):
+                entregas.setdefault(e.solicitud_id, str(e.pk))
+        ctx = {**self.get_serializer_context(), "entregas_por_solicitud": entregas}
+        return Response(SolicitudSerializer(solicitudes, many=True, context=ctx).data)
 
     def create(self, request, *args, **kwargs):
         ser = self.get_serializer(data=request.data)
@@ -262,25 +295,40 @@ class EntregaViewSet(mixins.CreateModelMixin, mixins.ListModelMixin,
 
     def get_serializer_context(self):
         ctx = super().get_serializer_context()
-        if self.request and self.request.user.is_authenticated and self.request.user.es_admin:
+        # La comparación de fotos es costosa: solo se hace al listar o ver entregas
+        # (no al crear, confirmar o validar).
+        if (
+            self.action in ("list", "retrieve")
+            and self.request
+            and self.request.user.is_authenticated
+            and self.request.user.es_admin
+        ):
             ctx["repetidas"] = self._repetidas()
         return ctx
 
     def _repetidas(self):
         """Entregas cuya foto coincide con otra entrega o con la foto de un animal."""
-        entregas = [e for e in EntregaAnimal.objects.all() if e.foto_hash]
-        animales = [a for a in Animal.objects.all() if a.foto_hash]
+        entregas = [
+            (pk, a_entero(h))
+            for pk, h in EntregaAnimal.objects.exclude(foto_hash="").values_list("pk", "foto_hash")
+        ]
+        animales = [
+            (pk, nombre, a_entero(h))
+            for pk, nombre, h in Animal.objects.exclude(foto_hash="").values_list(
+                "pk", "nombre", "foto_hash"
+            )
+        ]
         res = {}
-        for e in entregas:
+        for pk, he in entregas:
             hits = []
-            for o in entregas:
-                if o.pk != e.pk and distancia(e.foto_hash, o.foto_hash) <= UMBRAL_DUPLICADO:
-                    hits.append({"tipo": "entrega", "id": str(o.pk)})
-            for a in animales:
-                if distancia(e.foto_hash, a.foto_hash) <= UMBRAL_DUPLICADO:
-                    hits.append({"tipo": "animal", "id": str(a.pk), "nombre": a.nombre or "Sin nombre"})
+            for opk, ho in entregas:
+                if opk != pk and distancia_enteros(he, ho) <= UMBRAL_DUPLICADO:
+                    hits.append({"tipo": "entrega", "id": str(opk)})
+            for apk, nombre, ha in animales:
+                if distancia_enteros(he, ha) <= UMBRAL_DUPLICADO:
+                    hits.append({"tipo": "animal", "id": str(apk), "nombre": nombre or "Sin nombre"})
             if hits:
-                res[str(e.pk)] = hits
+                res[str(pk)] = hits
         return res
 
     def create(self, request, *args, **kwargs):

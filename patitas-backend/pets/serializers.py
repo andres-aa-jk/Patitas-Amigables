@@ -125,6 +125,9 @@ class SolicitudSerializer(serializers.ModelSerializer):
         return obj.animal.nombre or f"{obj.animal.get_especie_display()} sin nombre"
 
     def get_entrega_id(self, obj):
+        precargadas = self.context.get("entregas_por_solicitud")
+        if precargadas is not None:  # listado: ya viene calculado, sin consulta extra
+            return precargadas.get(obj.pk)
         e = obj.entregas.exclude(estado=EntregaAnimal.RECHAZADA).first()
         return str(e.pk) if e else None
 
