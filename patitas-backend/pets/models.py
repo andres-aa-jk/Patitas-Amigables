@@ -97,6 +97,10 @@ class Animal(models.Model):
         verbose_name = "Animal"
         verbose_name_plural = "Animales"
         ordering = ["-fecha_registro"]
+        indexes = [
+            models.Index(fields=["estado_publicacion", "estado_adopcion"], name="animal_pub_adop_idx"),
+            models.Index(fields=["latitud", "longitud"], name="animal_coords_idx"),
+        ]
 
     def __str__(self):
         return f"{self.especie} - {self.nombre or 'Sin nombre'}"
@@ -137,6 +141,10 @@ class SolicitudAdopcion(models.Model):
 
     class Meta:
         ordering = ["-fecha"]
+        indexes = [
+            models.Index(fields=["solicitante", "estado"], name="solic_user_estado_idx"),
+            models.Index(fields=["animal", "estado"], name="solic_animal_estado_idx"),
+        ]
 
     def __str__(self):
         return f"Solicitud de {self.solicitante_id} por {self.animal_id} ({self.estado})"
@@ -182,6 +190,7 @@ class EntregaAnimal(models.Model):
 
     class Meta:
         ordering = ["-fecha"]
+        indexes = [models.Index(fields=["estado"], name="entrega_estado_idx")]
 
 
 class VistaAnimal(models.Model):
@@ -197,3 +206,4 @@ class VistaAnimal(models.Model):
 
     class Meta:
         ordering = ["-inicio"]
+        indexes = [models.Index(fields=["animal", "usuario"], name="vista_animal_user_idx")]

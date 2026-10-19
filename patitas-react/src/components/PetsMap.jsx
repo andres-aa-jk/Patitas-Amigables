@@ -114,7 +114,7 @@ export default function PetsMap({ animales, especieLabels, isAuthenticated = fal
         }).addTo(map);
         const popupHtml = `
           <div class="map-popup">
-            <img src="${esc(a.foto_url || '/images/paw-placeholder.svg')}" alt="${esc(a.nombre)}" />
+            <img loading="lazy" src="${esc(a.foto_url || '/images/paw-placeholder.svg')}" alt="${esc(a.nombre)}" />
             <h3>${esc(a.nombre || 'Sin nombre')}</h3>
             <p>${esc(a.especie_display || especieLabels[a.especie] || a.especie)} ${a.edad ? '· ' + esc(a.edad) + ' años' : ''}</p>
             <p>${esc((a.descripcion || '').slice(0, 50))}</p>

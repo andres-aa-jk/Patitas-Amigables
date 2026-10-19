@@ -1,5 +1,8 @@
+import logging
+
 from django.contrib.auth import get_user_model
 from rest_framework import generics, permissions, status
+from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -14,6 +17,7 @@ from .serializers import (
 )
 
 User = get_user_model()
+log_seguridad = logging.getLogger("patitas.seguridad")
 
 
 class LoginView(TokenObtainPairView):
@@ -21,6 +25,15 @@ class LoginView(TokenObtainPairView):
 
     serializer_class = PatitasTokenObtainPairSerializer
     permission_classes = [permissions.AllowAny]
+    throttle_scope = "login"
+
+    def post(self, request, *args, **kwargs):
+        try:
+            return super().post(request, *args, **kwargs)
+        except AuthenticationFailed:
+            usuario = str(request.data.get("username", ""))[:50]
+            log_seguridad.warning("Login fallido usuario=%r ip=%s", usuario, request.META.get("REMOTE_ADDR"))
+            raise
 
 
 class RegisterView(generics.CreateAPIView):
@@ -28,6 +41,7 @@ class RegisterView(generics.CreateAPIView):
 
     serializer_class = RegisterSerializer
     permission_classes = [permissions.AllowAny]
+    throttle_scope = "registro"
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)

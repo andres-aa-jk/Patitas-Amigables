@@ -23,7 +23,7 @@ function Animales({ avisar }) {
   return items.map((a) => (
     <div className="item-card" key={a.id}>
       <h3>{a.nombre || 'Sin nombre'} · {a.especie_display}</h3>
-      {a.foto_url && <img className="thumb" src={a.foto_url} alt={a.nombre || 'Animal'} />}
+      {a.foto_url && <img className="thumb" loading="lazy" src={a.foto_url} alt={a.nombre || 'Animal'} />}
       <p>{a.descripcion}</p>
       <p>Registrado por <strong>{a.registrado_por_username}</strong> · {new Date(a.fecha_registro).toLocaleString()}</p>
       {a.posibles_duplicados.length > 0 && (

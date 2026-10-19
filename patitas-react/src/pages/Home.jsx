@@ -46,6 +46,8 @@ export default function Home() {
             <div className="pet-card" key={animal.id}>
               <div className="pet-image">
                 <img
+                  loading="lazy"
+                  decoding="async"
                   src={animal.foto_url || '/images/paw-placeholder.svg'}
                   alt={animal.nombre || 'Mascota'}
                   onError={(e) => {

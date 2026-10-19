@@ -155,3 +155,13 @@ access automáticamente cuando recibe un 401.
 | `CORS policy: No 'Access-Control-Allow-Origin'` | Agrega la URL del frontend a `CORS_ALLOWED_ORIGINS` en el `.env`. |
 | `no such column` / campos raros | Borra las migraciones y vuelve a correr `makemigrations` con la URI de Mongo ya configurada. |
 | El 401 no se recupera solo | Revisa que `VITE_API_URL` del frontend apunte al puerto correcto. |
+
+
+## Seguridad, límites y diagnóstico
+
+- **`DEBUG` es `False` por defecto.** En tu equipo pon `DEBUG=True` en el `.env`. Con `DEBUG=False` el servidor no arranca si `SECRET_KEY` es la de ejemplo o tiene menos de 32 caracteres.
+- **Límite de peticiones (429):** login 10/min, registro 5/hora, crear animales/solicitudes/constancias 30/hora, y límites generales por IP/usuario (`THROTTLE_RATES` en `config/settings.py`). Se desactivan al correr las pruebas.
+- **Fotos:** máximo `MAX_FOTO_MB` (10 por defecto); se guardan como JPEG con el lado mayor limitado a 1600 px.
+- **Producción:** con `DEBUG=False` se activan redirección a HTTPS, cookies seguras y HSTS (ver `.env.example`).
+- **Índices:** tras actualizar, ejecuta `python manage.py makemigrations pets` y `python manage.py migrate` para crearlos en MongoDB.
+- **Conexión a MongoDB:** `python manage.py probar_conexion` comprueba la conexión sin mostrar contraseñas y explica los fallos más comunes (IP no permitida en Atlas, credenciales, DNS).

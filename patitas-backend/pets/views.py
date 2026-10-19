@@ -1,5 +1,7 @@
 import math
 
+from bson.errors import InvalidId
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Q
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404
@@ -11,7 +13,7 @@ from rest_framework.response import Response
 
 from users.permissions import IsAdminRol
 
-from .imagenes import UMBRAL_DUPLICADO, a_entero, distancia_enteros
+from .imagenes import UMBRAL_DUPLICADO, a_entero, distancia_enteros, optimizar_imagen
 from .models import Animal, EntregaAnimal, SolicitudAdopcion, VistaAnimal
 from .serializers import (
     AnimalAdminSerializer,
@@ -23,6 +25,22 @@ from .serializers import (
 
 # Tope de una visualización: evita contar pestañas olvidadas abiertas.
 MAX_SEGUNDOS_VISTA = 30 * 60
+
+
+def obtener_o_404(queryset, **filtros):
+    """get_object_or_404 que responde 404 (y no 500) si el id recibido no es un ObjectId válido."""
+    try:
+        return get_object_or_404(queryset, **filtros)
+    except (ValueError, TypeError, DjangoValidationError, InvalidId):
+        raise Http404
+
+
+class LimiteSubidaMixin:
+    """Aplica el límite 'subida' (ver THROTTLE_RATES) solo al crear registros."""
+
+    def get_throttles(self):
+        self.throttle_scope = "subida" if getattr(self, "action", None) == "create" else None
+        return super().get_throttles()
 
 
 def distancia_metros(lat1, lon1, lat2, lon2):
@@ -88,7 +106,7 @@ def duplicados_de(animales):
     return resultado
 
 
-class AnimalViewSet(viewsets.ModelViewSet):
+class AnimalViewSet(LimiteSubidaMixin, viewsets.ModelViewSet):
     """
     GET    /api/animales/                 -> lista (solo aprobados y disponibles)
     POST   /api/animales/                 -> crear (queda pendiente de revisión)
@@ -181,7 +199,7 @@ class AnimalViewSet(viewsets.ModelViewSet):
         return Response(self.get_serializer(animal).data)
 
 
-class SolicitudViewSet(mixins.CreateModelMixin, mixins.ListModelMixin,
+class SolicitudViewSet(LimiteSubidaMixin, mixins.CreateModelMixin, mixins.ListModelMixin,
                        mixins.RetrieveModelMixin, viewsets.GenericViewSet):
     """
     POST /api/solicitudes/                   -> pedir la adopción de un animal
@@ -217,7 +235,7 @@ class SolicitudViewSet(mixins.CreateModelMixin, mixins.ListModelMixin,
     def create(self, request, *args, **kwargs):
         ser = self.get_serializer(data=request.data)
         ser.is_valid(raise_exception=True)
-        animal = get_object_or_404(
+        animal = obtener_o_404(
             Animal.objects.filter(
                 estado_publicacion=Animal.PUB_APROBADO, estado_adopcion=Animal.ADOP_DISPONIBLE
             ),
@@ -269,7 +287,7 @@ class SolicitudViewSet(mixins.CreateModelMixin, mixins.ListModelMixin,
         return Response(self.get_serializer(sol).data)
 
 
-class EntregaViewSet(mixins.CreateModelMixin, mixins.ListModelMixin,
+class EntregaViewSet(LimiteSubidaMixin, mixins.CreateModelMixin, mixins.ListModelMixin,
                      mixins.RetrieveModelMixin, viewsets.GenericViewSet):
     """
     POST /api/entregas/                      -> subir la foto de recogida (multipart)
@@ -336,7 +354,7 @@ class EntregaViewSet(mixins.CreateModelMixin, mixins.ListModelMixin,
 
         ser = self.get_serializer(data=request.data)
         ser.is_valid(raise_exception=True)
-        sol = get_object_or_404(
+        sol = obtener_o_404(
             SolicitudAdopcion, pk=ser.validated_data["solicitud"], solicitante=request.user
         )
         if sol.estado != SolicitudAdopcion.APROBADA or sol.animal.estado_adopcion != Animal.ADOP_EN_ENTREGA:
@@ -344,9 +362,10 @@ class EntregaViewSet(mixins.CreateModelMixin, mixins.ListModelMixin,
         if sol.entregas.exclude(estado=EntregaAnimal.RECHAZADA).exists():
             return Response({"detail": "Esta adopción ya tiene una constancia en revisión o validada."}, status=400)
         foto = ser.validated_data["foto"]
+        huella = calcular_hash(foto)  # la huella se calcula sobre la foto original
         entrega = EntregaAnimal.objects.create(
-            solicitud=sol, animal=sol.animal, adoptante=request.user, foto=foto,
-            foto_hash=calcular_hash(foto),
+            solicitud=sol, animal=sol.animal, adoptante=request.user, foto=optimizar_imagen(foto),
+            foto_hash=huella,
             consentimiento_imagen=ser.validated_data["consentimiento_imagen"],
             latitud=ser.validated_data.get("latitud"), longitud=ser.validated_data.get("longitud"),
         )
@@ -417,7 +436,7 @@ class VistaViewSet(viewsets.GenericViewSet):
         return qs
 
     def create(self, request):
-        animal = get_object_or_404(animales_visibles(request.user), pk=request.data.get("animal_id"))
+        animal = obtener_o_404(animales_visibles(request.user), pk=request.data.get("animal_id"))
         if request.user.es_admin or not request.user.acepta_politica:
             return Response(status=status.HTTP_204_NO_CONTENT)  # no se registra
         vista = VistaAnimal.objects.create(usuario=request.user, animal=animal)
@@ -425,7 +444,7 @@ class VistaViewSet(viewsets.GenericViewSet):
 
     @action(detail=True, methods=["post"], url_path="cerrar")
     def cerrar(self, request, pk=None):
-        vista = get_object_or_404(VistaAnimal, pk=pk, usuario=request.user)
+        vista = obtener_o_404(VistaAnimal, pk=pk, usuario=request.user)
         if vista.fin is None:
             vista.fin = timezone.now()
             vista.duracion_segundos = min(

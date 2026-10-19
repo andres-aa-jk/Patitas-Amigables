@@ -1,23 +1,27 @@
+import { lazy, Suspense } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import Layout from './components/Layout';
 import RequireAuth from './components/RequireAuth';
 import Home from './pages/Home';
-import Login from './pages/Login';
-import Register from './pages/Register';
-import Profile from './pages/Profile';
-import ProfileEdit from './pages/ProfileEdit';
-import AddAnimal from './pages/AddAnimal';
 import RequireAdmin from './components/RequireAdmin';
-import Adoptar from './pages/Adoptar';
-import MisSolicitudes from './pages/MisSolicitudes';
-import Entrega from './pages/Entrega';
-import AdminPanel from './pages/AdminPanel';
-import About from './pages/About';
-import Contact from './pages/Contact';
+
+// Las páginas se descargan cuando se visitan (Home queda en la carga inicial).
+const Login = lazy(() => import('./pages/Login'));
+const Register = lazy(() => import('./pages/Register'));
+const Profile = lazy(() => import('./pages/Profile'));
+const ProfileEdit = lazy(() => import('./pages/ProfileEdit'));
+const AddAnimal = lazy(() => import('./pages/AddAnimal'));
+const Adoptar = lazy(() => import('./pages/Adoptar'));
+const MisSolicitudes = lazy(() => import('./pages/MisSolicitudes'));
+const Entrega = lazy(() => import('./pages/Entrega'));
+const AdminPanel = lazy(() => import('./pages/AdminPanel'));
+const About = lazy(() => import('./pages/About'));
+const Contact = lazy(() => import('./pages/Contact'));
 
 export default function App() {
   return (
     <Layout>
+      <Suspense fallback={<p style={{ textAlign: 'center', padding: '2rem' }}>Cargando…</p>}>
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/login" element={<Login />} />
@@ -53,6 +57,7 @@ export default function App() {
         <Route path="/entrega/:solicitudId" element={<RequireAuth><Entrega /></RequireAuth>} />
         <Route path="/panel-admin" element={<RequireAdmin><AdminPanel /></RequireAdmin>} />
       </Routes>
+      </Suspense>
     </Layout>
   );
 }

@@ -23,5 +23,5 @@ export default function FotoProtegida({ entregaId, alt = 'Foto de la entrega' })
 
   if (error) return <p className="form-text">No se pudo cargar la foto.</p>;
   if (!src) return <p className="form-text">Cargando foto...</p>;
-  return <img className="thumb" src={src} alt={alt} />;
+  return <img className="thumb" loading="lazy" src={src} alt={alt} />;
 }

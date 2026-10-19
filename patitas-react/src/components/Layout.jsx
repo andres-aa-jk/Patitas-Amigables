@@ -29,14 +29,16 @@ export default function Layout({ children }) {
         </div>
         <button
           className={`hamburger ${menuOpen ? 'active' : ''}`}
-          aria-label="Menu"
+          aria-label="Menú"
+          aria-expanded={menuOpen}
+          aria-controls="menu-principal"
           onClick={() => setMenuOpen((v) => !v)}
         >
           <span></span>
           <span></span>
           <span></span>
         </button>
-        <ul className={`nav-links ${menuOpen ? 'active' : ''}`}>
+        <ul id="menu-principal" className={`nav-links ${menuOpen ? 'active' : ''}`}>
           {isAuthenticated ? (
             <>
               <li>
@@ -118,7 +120,7 @@ export default function Layout({ children }) {
         <div className={`menu-overlay ${menuOpen ? 'active' : ''}`} onClick={closeMenu} />
         <footer>
           <center>
-            <p>&copy; 2025 Patitas Amigables. Todos los derechos reservados.</p>
+            <p>&copy; {new Date().getFullYear()} Patitas Amigables. Todos los derechos reservados.</p>
           </center>
         </footer>
       </main>

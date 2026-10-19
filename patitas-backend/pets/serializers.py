@@ -1,7 +1,15 @@
+from django.conf import settings
 from rest_framework import serializers
 
-from .imagenes import calcular_hash
+from .imagenes import calcular_hash, optimizar_imagen
 from .models import Animal, EntregaAnimal, SolicitudAdopcion, VistaAnimal
+
+
+def validar_tamano_foto(archivo):
+    """Rechaza fotos más pesadas que MAX_FOTO_MB (antes de procesarlas)."""
+    limite_mb = getattr(settings, "MAX_FOTO_MB", 10)
+    if archivo and archivo.size > limite_mb * 1024 * 1024:
+        raise serializers.ValidationError(f"La foto no puede pesar más de {limite_mb} MB.")
 
 
 class AnimalSerializer(serializers.ModelSerializer):
@@ -62,6 +70,7 @@ class AnimalSerializer(serializers.ModelSerializer):
         return value
 
     def validate_foto(self, value):
+        validar_tamano_foto(value)
         if value and not calcular_hash(value):
             raise serializers.ValidationError("El archivo no es una imagen válida.")
         return value
@@ -72,6 +81,7 @@ class AnimalSerializer(serializers.ModelSerializer):
         foto = validated_data.get("foto")
         if foto:
             validated_data["foto_hash"] = calcular_hash(foto)
+            validated_data["foto"] = optimizar_imagen(foto)
         # Los administradores publican directamente; el resto pasa por revisión.
         if user.es_admin:
             validated_data["estado_publicacion"] = Animal.PUB_APROBADO
@@ -82,6 +92,7 @@ class AnimalSerializer(serializers.ModelSerializer):
         foto = validated_data.get("foto")
         if foto:
             validated_data["foto_hash"] = calcular_hash(foto)
+            validated_data["foto"] = optimizar_imagen(foto)
         if not user.es_admin:
             # Cualquier cambio de un no admin vuelve a revisión.
             instance.estado_publicacion = Animal.PUB_PENDIENTE
@@ -185,6 +196,7 @@ class EntregaSerializer(serializers.ModelSerializer):
         return value
 
     def validate_foto(self, value):
+        validar_tamano_foto(value)
         if not calcular_hash(value):
             raise serializers.ValidationError("El archivo no es una imagen válida.")
         return value
